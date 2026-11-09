@@ -1,0 +1,184 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <fstream>
+#include <iomanip>
+#include <algorithm>
+using namespace std;
+
+struct Transaction {
+    int id;
+    string date, type, category, description;   // date format: YYYY-MM-DD
+    double amount;
+};
+
+vector<Transaction> txs;
+double monthlyBudget = 30000;
+const string CATEGORIES[6] = {"Food", "Transport", "Utilities", "Education", "Shopping", "Entertainment"};
+
+bool isCategory(const string& c) {
+    for (int i = 0; i < 6; i++) if (CATEGORIES[i] == c) return true;
+    return false;
+}
+
+// Total of one transaction type; if month ("YYYY-MM") is given, only that month
+double totalByType(const string& type, const string& month = "") {
+    double sum = 0;
+    for (size_t i = 0; i < txs.size(); i++)
+        if (txs[i].type == type && (month == "" || txs[i].date.substr(0, 7) == month)) sum += txs[i].amount;
+    return sum;
+}
+
+int findById(int id) {
+    for (size_t i = 0; i < txs.size(); i++) if (txs[i].id == id) return (int)i;
+    return -1;
+}
+
+// Reads all fields of one transaction (category and description may contain spaces)
+void enterFields(Transaction& t) {
+    cout << "Date (YYYY-MM-DD): "; cin >> t.date;
+    cout << "Type (Income/Expense): "; cin >> t.type;
+    cout << "Category (Food/Transport/Utilities/Education/Shopping/Entertainment or custom): ";
+    cin >> ws; getline(cin, t.category);
+    cout << "Amount: "; cin >> t.amount; cin.ignore(1000, '\n');
+    cout << "Description: "; getline(cin, t.description);
+}
+
+void addTransaction() {
+    Transaction t;
+    t.id = txs.empty() ? 1 : txs.back().id + 1;
+    enterFields(t);
+    txs.push_back(t);
+    cout << "Saved with ID " << t.id << "\n";
+}
+
+// Shared by menu 2 (no filter) and menu 9 (filter by month and/or category)
+void showTransactions(const string& month = "*", const string& cat = "*") {
+    double inc = 0, exp = 0;
+    cout << left << setw(5) << "ID" << setw(12) << "Date" << setw(9) << "Type" << setw(14) << "Category"
+         << right << setw(10) << "Amount" << "  Description\n" << string(80, '-') << "\n";
+    for (size_t i = 0; i < txs.size(); i++) {
+        bool okMonth = month == "*" || txs[i].date.substr(0, 7) == month;
+        bool okCat = cat == "*" || txs[i].category == cat || (cat == "Custom" && !isCategory(txs[i].category));
+        if (!okMonth || !okCat) continue;
+        cout << left << setw(5) << txs[i].id << setw(12) << txs[i].date << setw(9) << txs[i].type
+             << setw(14) << txs[i].category << right << setw(10) << fixed << setprecision(2)
+             << txs[i].amount << "  " << txs[i].description << "\n";
+        if (txs[i].type == "Income") inc += txs[i].amount; else exp += txs[i].amount;
+    }
+    cout << "Income: " << inc << "  Expenses: " << exp << "  Savings: " << inc - exp << "\n";
+}
+
+void filterTransactions() {
+    string month, cat;
+    cout << "Month (YYYY-MM, * for all) and category (name, * for all, Custom): "; cin >> month >> cat;
+    showTransactions(month, cat);
+}
+
+void editTransaction() {
+    int id; cout << "ID to edit: "; cin >> id;
+    int i = findById(id);
+    if (i == -1) { cout << "ID not found.\n"; return; }
+    enterFields(txs[i]);
+    cout << "Transaction " << id << " updated.\n";
+}
+
+void deleteTransaction() {
+    int id; cout << "ID to delete: "; cin >> id;
+    int i = findById(id);
+    if (i == -1) { cout << "ID not found.\n"; return; }
+    txs.erase(txs.begin() + i);
+    cout << "Transaction " << id << " deleted.\n";
+}
+
+void showSummary() {
+    double inc = totalByType("Income"), exp = totalByType("Expense");
+    cout << fixed << setprecision(2) << "Total income: " << inc << "\nTotal expenses: " << exp
+         << "\nSavings: " << inc - exp << "\nBudget: " << monthlyBudget << "\n";
+    if (exp > monthlyBudget) cout << "*** WARNING: expenses exceed the budget by " << exp - monthlyBudget << " ***\n";
+    else cout << "Within budget. Remaining: " << monthlyBudget - exp << "\n";
+}
+
+void setBudget() {
+    cout << "Current budget: " << monthlyBudget << "\nNew monthly budget: "; cin >> monthlyBudget;
+    cout << "Budget updated.\n";
+}
+
+void categoryChart() {
+    vector<double> sums(6, 0);
+    for (size_t i = 0; i < txs.size(); i++)
+        for (int c = 0; c < 6; c++)
+            if (txs[i].type == "Expense" && txs[i].category == CATEGORIES[c]) sums[c] += txs[i].amount;
+    double biggest = *max_element(sums.begin(), sums.end());
+    cout << "Category comparison (1 # = 5% of the biggest category):\n";
+    for (int c = 0; c < 6; c++) cout << left << setw(14) << CATEGORIES[c]
+        << string(biggest > 0 ? (int)(sums[c] * 20 / biggest) : 0, '#') << "\n";
+    int top = 0;
+    for (int c = 1; c < 6; c++) if (sums[c] > sums[top]) top = c;
+    cout << "Highest spending category: " << (biggest > 0 ? CATEGORIES[top] : "none") << " (" << biggest << ")\n";
+}
+
+void monthlyTrend() {
+    vector<string> months;
+    for (size_t i = 0; i < txs.size(); i++) {
+        string m = txs[i].date.substr(0, 7);
+        if (find(months.begin(), months.end(), m) == months.end()) months.push_back(m);
+    }
+    sort(months.begin(), months.end());
+    cout << "Monthly spending trend (1 * = 1000 expense):\n";
+    for (size_t i = 0; i < months.size(); i++)
+        cout << months[i] << " " << string((int)(totalByType("Expense", months[i]) / 1000), '*')
+             << "  " << totalByType("Expense", months[i]) << "\n";
+}
+
+void exportCSV() {
+    ofstream fout("transactions.csv");
+    fout << "ID,Date,Type,Category,Amount,Description\n";
+    for (size_t i = 0; i < txs.size(); i++)
+        fout << txs[i].id << "," << txs[i].date << "," << txs[i].type << "," << txs[i].category << ","
+             << fixed << setprecision(2) << txs[i].amount << ",\"" << txs[i].description << "\"\n";
+    cout << txs.size() << " transactions exported to transactions.csv\n";
+}
+
+// 3 months x 32 transactions + 5 extras = 101 sample transactions
+void loadSampleData() {
+    string months[3] = {"2025-09", "2025-10", "2025-11"};
+    string cats[6] = {"Food", "Transport", "Utilities", "Education", "Shopping", "Entertainment"};
+    string notes[6] = {"Groceries", "Bus pass", "Electricity bill", "Course books", "New clothes", "Cinema"};
+    double base[6] = {1200, 600, 800, 900, 700, 500};
+    int id = 1;
+    for (int m = 0; m < 3; m++) {
+        txs.push_back(Transaction{id++, months[m] + "-01", "Income", "Salary", "Monthly salary", 50000});
+        txs.push_back(Transaction{id++, months[m] + "-15", "Income", "Freelance", "Freelance work", 5000.0 + m * 1200});
+        for (int r = 0; r < 5; r++)
+            for (int c = 0; c < 6; c++)
+                txs.push_back(Transaction{id++, months[m] + "-" + to_string(10 + r * 3), "Expense",
+                                          cats[c], notes[c], base[c] + r * 150 + m * 300});
+    }
+    txs.push_back(Transaction{id++, "2025-09-28", "Income", "Bonus", "Eid bonus", 3000});
+    txs.push_back(Transaction{id++, "2025-10-22", "Expense", "Gifts", "Birthday gift", 2500});
+    txs.push_back(Transaction{id++, "2025-11-07", "Expense", "Medical", "Pharmacy", 1800});
+    txs.push_back(Transaction{id++, "2025-11-18", "Income", "Scholarship", "Merit scholarship", 15000});
+    txs.push_back(Transaction{id++, "2025-11-25", "Expense", "Travel", "Trip to Lahore", 7000});
+}
+
+int main() {
+    loadSampleData();
+    int choice;
+    while (true) {
+        cout << "\n====== PERSONAL FINANCE MANAGER ======\n"
+                " 1.Add  2.Display  3.Edit  4.Delete  5.Summary & warning\n"
+                " 6.Set budget  7.Category chart  8.Monthly trend\n"
+                " 9.Filter  10.Export CSV  0.Exit\nChoice: ";
+        cin >> choice;
+        switch (choice) {
+            case 1: addTransaction(); break;        case 2: showTransactions(); break;
+            case 3: editTransaction(); break;       case 4: deleteTransaction(); break;
+            case 5: showSummary(); break;           case 6: setBudget(); break;
+            case 7: categoryChart(); break;         case 8: monthlyTrend(); break;
+            case 9: filterTransactions(); break;    case 10: exportCSV(); break;
+            case 0: cout << "Goodbye!\n"; return 0;
+            default: cout << "Invalid option.\n";
+        }
+    }
+}
